@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include <numeric>
+#include <functional>
 
 using namespace std;
 
@@ -57,6 +58,8 @@ enum class DocumentStatus {
 
 const double EPSILON = 1e-6;
 
+using filterFn = function<bool(int document_id, DocumentStatus status, int rating)>;
+
 class SearchServer {
 public:
     void SetStopWords(const string& text) {
@@ -77,15 +80,15 @@ public:
         documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
     }
 
-    template<typename filterFn>
     vector<Document> FindTopDocuments(const string& raw_query, filterFn fn) const {
-
         const Query query = ParseQuery(raw_query);
         vector<Document> matched_documents = FindAllDocuments(query, fn);
-        sort(matched_documents.begin(), matched_documents.end(),
-            [&EPSILON](const Document& lhs, const Document& rhs) {
-            return lhs.relevance > rhs.relevance || (abs(lhs.relevance - rhs.relevance) < EPSILON && lhs.rating > rhs.rating);
-        }
+        sort(
+            matched_documents.begin(),
+            matched_documents.end(),
+            [](const Document& lhs, const Document& rhs) {
+                return lhs.relevance > rhs.relevance || (abs(lhs.relevance - rhs.relevance) < EPSILON && lhs.rating > rhs.rating);
+            }
         );
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
