@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <numeric>
 
 using namespace std;
 
@@ -54,7 +55,7 @@ enum class DocumentStatus {
     REMOVED,
 };
 
-using filterFn = bool (*)(int document_id, DocumentStatus status, int rating);
+const double EPSILON = 1e-6;
 
 class SearchServer {
 public:
@@ -68,20 +69,19 @@ public:
         const vector<string> words = SplitIntoWordsNoStop(document);
         const double inv_word_count = 1.0 / words.size();
         for (const string& word : words) {
+            if(word_to_document_freqs_[word].count(document_id) == 0) {
+                word_to_document_freqs_[word][document_id] = 0.0;
+            }
             word_to_document_freqs_[word][document_id] += inv_word_count;
         }
-        documents_.emplace(document_id,
-            DocumentData{
-                ComputeAverageRating(ratings),
-                status
-            });
+        documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
     }
 
+    template<typename filterFn>
     vector<Document> FindTopDocuments(const string& raw_query, filterFn fn) const {
 
         const Query query = ParseQuery(raw_query);
-        auto matched_documents = FindAllDocuments(query, fn);
-        const double EPSILON = 1e-6;
+        vector<Document> matched_documents = FindAllDocuments(query, fn);
         sort(matched_documents.begin(), matched_documents.end(),
             [&EPSILON](const Document& lhs, const Document& rhs) {
             return lhs.relevance > rhs.relevance || (abs(lhs.relevance - rhs.relevance) < EPSILON && lhs.rating > rhs.rating);
@@ -94,23 +94,7 @@ public:
     }
 
     vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus statusFilter) const {
-        switch (statusFilter) {
-            case DocumentStatus::ACTUAL:
-                return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
-            break;
-            case DocumentStatus::IRRELEVANT:
-                return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::IRRELEVANT; });
-            break;
-            case DocumentStatus::BANNED:
-                return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::BANNED; });
-            break;
-            case DocumentStatus::REMOVED:
-                return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::REMOVED; });
-            break;
-            default:
-                return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
-            break;
-        }
+        return FindTopDocuments(raw_query, [statusFilter](int document_id, DocumentStatus status, int rating) { return status == statusFilter; });
     }
 
     vector<Document> FindTopDocuments(const string& raw_query) const {
@@ -169,10 +153,7 @@ private:
     }
 
     static int ComputeAverageRating(const vector<int>& ratings) {
-        int rating_sum = 0;
-        for (const int rating : ratings) {
-            rating_sum += rating;
-        }
+        int rating_sum = accumulate(ratings.cbegin(), ratings.cend(), 0);
         return rating_sum / static_cast<int>(ratings.size());
     }
 
@@ -280,25 +261,25 @@ void PrintDocument(const Document& document) {
 
 int main() {
     SearchServer search_server;
-    search_server.SetStopWords("и в на"s);
+    search_server.SetStopWords("and in on"s);
 
-    search_server.AddDocument(0, "белый кот и модный ошейник"s, DocumentStatus::ACTUAL, { 8, -3 });
-    search_server.AddDocument(1, "пушистый кот пушистый хвост"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
-    search_server.AddDocument(2, "ухоженный пёс выразительные глаза"s, DocumentStatus::ACTUAL, { 5, -12, 2, 1 });
-    search_server.AddDocument(3, "ухоженный скворец евгений"s, DocumentStatus::BANNED, { 9 });
+    search_server.AddDocument(0, "white cat and fashion collar"s, DocumentStatus::ACTUAL, { 8, -3 });
+    search_server.AddDocument(1, "fluffy cat fluffy tail"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
+    search_server.AddDocument(2, "groomed dog expressive eyes"s, DocumentStatus::ACTUAL, { 5, -12, 2, 1 });
+    search_server.AddDocument(3, "groomed starling eugene"s, DocumentStatus::BANNED, { 9 });
 
     cout << "ACTUAL by default:"s << endl;
-    for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s)) {
+    for (const Document& document : search_server.FindTopDocuments("fluffy groomed cat -collar"s)) {
         PrintDocument(document);
     }
 
     cout << "BANNED:"s << endl;
-    for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s, DocumentStatus::BANNED)) {
+    for (const Document& document : search_server.FindTopDocuments("fluffy groomed cat -collar"s, DocumentStatus::BANNED)) {
         PrintDocument(document);
     }
 
     cout << "Even ids:"s << endl;
-    for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s, [](int document_id, DocumentStatus status, int rating) { return document_id % 2 == 0; })) {
+    for (const Document& document : search_server.FindTopDocuments("fluffy groomed cat -collar"s, [](int document_id, DocumentStatus status, int rating) { return document_id % 2 == 0; })) {
         PrintDocument(document);
     }
 
