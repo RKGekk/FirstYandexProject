@@ -3,3 +3,8 @@
 ################################################################################
 
 /.vs/Project70/v16/ipch/AutoPCH/f9720f0907aae889/SOURCE1.ipch
+*.ipch
+*.db
+*.db-shm
+*.db-wal
+*.opendb
