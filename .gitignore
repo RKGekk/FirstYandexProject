@@ -8,3 +8,12 @@
 *.db-shm
 *.db-wal
 *.opendb
+*.tlog
+*.recipe
+*.log
+*.obj
+*.idb
+*.pdb
+*.exe
+*.ilk
+*.suo

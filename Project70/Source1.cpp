@@ -70,11 +70,16 @@ public:
         }
     }
 
-    void AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings) {
+    bool AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings) {
+        if (document.empty()) {
+            return false;
+        }
         if (!addDocumentData(document_id, splitIntoWordsNoStop(document), status, ratings)) {
             deleteAllDocumentWords(document_id);
         }
-        calculateTF(document_id);
+        calculateTermFrequency(document_id);
+
+        return true;
     }
 
     vector<Document> FindTopDocuments(const string& raw_query, filterFn fn) const {
@@ -166,7 +171,7 @@ private:
         }
     }
 
-    void calculateTF(int documentId) {
+    void calculateTermFrequency(int documentId) {
         const vector<string>& words = documents_[documentId].words;
         const double inv_word_count = 1.0 / words.size();
         for (const string& word : words) {
@@ -193,7 +198,13 @@ private:
 
     static int computeAverageRating(const vector<int>& ratings) {
         int rating_sum = accumulate(ratings.cbegin(), ratings.cend(), 0);
-        return rating_sum / static_cast<int>(ratings.size());
+        int ratingsCount = static_cast<int>(ratings.size());
+        if (ratingsCount == 0) {
+            return 0;
+        }
+        else {
+            return rating_sum / static_cast<int>(ratings.size());
+        }
     }
 
     struct QueryWord {
@@ -290,11 +301,13 @@ template<typename T>
 void Print(ostream& out, T container) {
     bool first = true;
     for (const auto& element : container) {
-        if (!first) {
-            out << ", "s;
+        if (first) {
+            out << element;
+            first = false;
         }
-        out << element;
-        first = false;
+        else {
+            out << ", "s << element;
+        }
     }
 }
 
@@ -663,15 +676,19 @@ void TestRating() {
 
     const int doc_id2 = 7;
     const string content2 = "fluffy cat fluffy tail"s;
-    const vector<int> ratings2 = { 7, 2, 7 };
+    const vector<int> ratings2 = { 257, 26, 769 };
 
     const int doc_id3 = 9;
     const string content3 = "groomed dog expressive eyes"s;
-    const vector<int> ratings3 = { 5, -12, 2, 1 };
+    const vector<int> ratings3 = { 75698, -12359, 28964, 13654 };
 
     const int doc_id4 = 10;
     const string content4 = "groomed starling evgen"s;
     const vector<int> ratings4 = { 9 };
+
+    const int doc_id5 = 11;
+    const string content5 = "red spider peter with black abdomen"s;
+    const vector<int> ratings5;
 
     {
         SearchServer server;
@@ -680,12 +697,27 @@ void TestRating() {
         server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
         server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
         server.AddDocument(doc_id4, content4, DocumentStatus::BANNED, ratings4);
+        server.AddDocument(doc_id5, content5, DocumentStatus::ACTUAL, ratings5);
 
         const auto found_docs = server.FindTopDocuments("white cat -fluffy"s);
         int rating_sum = accumulate(ratings1.cbegin(), ratings1.cend(), 0);
         int r = rating_sum / static_cast<int>(ratings1.size());
         ASSERT_EQUAL(found_docs.size(), 1u);
         ASSERT_EQUAL(found_docs[0].rating, r);
+    }
+
+    {
+        SearchServer server;
+        server.SetStopWords("and in on the with"s);
+        server.AddDocument(doc_id1, content1, DocumentStatus::ACTUAL, ratings1);
+        server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings2);
+        server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings3);
+        server.AddDocument(doc_id4, content4, DocumentStatus::BANNED, ratings4);
+        server.AddDocument(doc_id5, content5, DocumentStatus::ACTUAL, ratings5);
+
+        const auto found_docs = server.FindTopDocuments("spider"s);
+        ASSERT_EQUAL(found_docs.size(), 1u);
+        ASSERT_EQUAL(found_docs[0].rating, 0);
     }
 }
 
